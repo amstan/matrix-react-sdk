@@ -61,6 +61,7 @@ const typehandlers = {
 
 export const Notifier = {
     notifsByRoom: {},
+    notifTimeoutsByRoom: {},
 
     // A list of event IDs that we've received but need to wait until
     // they're decrypted until we decide whether to notify for them
@@ -366,11 +367,25 @@ export const Notifier = {
             // as good but it's something.
             const plaf = PlatformPeg.get();
             if (!plaf) return;
-            if (this.notifsByRoom[room.roomId] === undefined) return;
-            for (const notif of this.notifsByRoom[room.roomId]) {
-                plaf.clearNotification(notif);
+            console.log("onRoomReciept");
+            if (this.notifsByRoom[room.roomId] !== undefined) {
+                for (const notif of this.notifsByRoom[room.roomId]) {
+                    console.log("clearNotification", notif);
+                    plaf.clearNotification(notif);
+                }
+                delete this.notifsByRoom[room.roomId];
             }
-            delete this.notifsByRoom[room.roomId];
+            this._clearNotificationTimeouts(room);
+        }
+    },
+
+    _clearNotificationTimeouts: function(room) {
+        if (this.notifTimeoutsByRoom[room.roomId] !== undefined) {
+            for (const timeout of this.notifTimeoutsByRoom[room.roomId]) {
+                console.log("clearTimeout", timeout);
+                clearTimeout(timeout);
+            }
+            delete this.notifTimeoutsByRoom[room.roomId];
         }
     },
 
@@ -378,17 +393,37 @@ export const Notifier = {
         const room = MatrixClientPeg.get().getRoom(ev.getRoomId());
         const actions = MatrixClientPeg.get().getPushActionsForEvent(ev);
         if (actions && actions.notify) {
-            if (RoomViewStore.getRoomId() === room.roomId && UserActivity.sharedInstance().userActiveRecently()) {
+            console.log("userActiveRecently", UserActivity.sharedInstance().userActiveRecently(), "userActiveNow", UserActivity.sharedInstance().userActiveRecently());
+            if (RoomViewStore.getRoomId() === room.roomId && UserActivity.sharedInstance().userActiveNow()) {
                 // don't bother notifying as user was recently active in this room
                 return;
             }
 
-            if (this.isEnabled()) {
-                this._displayPopupNotification(ev, room);
-            }
-            if (actions.tweaks.sound && this.isAudioEnabled()) {
-                PlatformPeg.get().loudNotification(ev, room);
-                this._playAudioNotification(ev, room);
+            console.log("First time we see notification");
+            const doNotification = function() {
+                console.log("doNotification");
+                this._clearNotificationTimeouts(room);
+                if (this.isEnabled()) {
+                    this._displayPopupNotification(ev, room);
+                }
+                if (actions.tweaks.sound && this.isAudioEnabled()) {
+                    PlatformPeg.get().loudNotification(ev, room);
+                    this._playAudioNotification(ev, room);
+                }
+            }.bind(this);
+
+            // We now have 2 options:
+            // * If we're the active client the user is interacting with, but perhaps minimized, doNotification right away
+            // * But we could be one of the other (many) clients, so give the user an opportunity to get notified on the main one,
+            //   only if onRoomReceipt doesn't come (user didn't see it at the supposedly active client) notify.
+            if (UserActivity.sharedInstance().userActiveRecently()) { // we're probably just minimized, but the user is here.
+                doNotification();
+            } else {
+                console.log("timeout calling doNotification in the future");
+                const timeout = setTimeout(doNotification, 10000); // TODO: change this to 30s
+                if (this.notifTimeoutsByRoom[ev.getRoomId()] === undefined) this.notifTimeoutsByRoom[ev.getRoomId()] = [];
+                console.log("timeout = ", timeout);
+                this.notifTimeoutsByRoom[ev.getRoomId()].push(timeout);
             }
         }
     },

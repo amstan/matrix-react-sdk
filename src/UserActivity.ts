@@ -28,7 +28,7 @@ import Timer from './utils/Timer';
 const CURRENTLY_ACTIVE_THRESHOLD_MS = 700;
 
 // 'Under a few minutes'.
-const RECENTLY_ACTIVE_THRESHOLD_MS = 2 * 60 * 1000;
+const RECENTLY_ACTIVE_THRESHOLD_MS = 30 * 1000;
 
 /**
  * This class watches for user activity (moving the mouse or pressing a key)
@@ -167,7 +167,7 @@ export default class UserActivity {
     private onPageVisibilityChanged = e => {
         if (this.document.visibilityState === "hidden") {
             this.activeNowTimeout.abort();
-            this.activeRecentlyTimeout.abort();
+//             this.activeRecentlyTimeout.abort();
         } else {
             this.onUserActivity(e);
         }
@@ -175,10 +175,11 @@ export default class UserActivity {
 
     private onWindowBlurred = () => {
         this.activeNowTimeout.abort();
-        this.activeRecentlyTimeout.abort();
+        //this.activeRecentlyTimeout.abort();
     };
 
     private onUserActivity = (event: MouseEvent) => {
+        console.log("onUserActivity");
         // ignore anything if the window isn't focused
         if (!this.document.hasFocus()) return;
 
